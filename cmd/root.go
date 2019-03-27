@@ -16,7 +16,6 @@ package cmd
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 
 	"golang.org/x/crypto/ssh"
@@ -75,39 +74,14 @@ to quickly create a Cobra application.`,
 			logrus.WithError(err).Fatalln("failed to setup stdout for session")
 		}
 
-		s, err := os.Stat("/tmp/test")
-		if err != nil {
-			logrus.WithError(err).Fatalln("failed to stat file")
-		}
-
-		f, err := ioutil.ReadFile("/tmp/test")
-		if err != nil {
-			logrus.WithError(err).Fatalln("failed to read in file contents")
-		}
-
-		transferStartMsg := fmt.Sprintf("C%04o %d %s\n", s.Mode(), s.Size(), s.Name())
-
 		go func() {
 			session.Run("scp -t /tmp")
 		}()
 
-		for _, i := range [][]byte{[]byte(transferStartMsg), f, []byte("\x00")} {
-			logrus.Infoln("writing")
-			fmt.Println(string(i))
-			n, err := stdin.Write(i)
-			if err != nil {
-				logrus.WithError(err).Fatalln("failed to transfer file via write")
-			}
-			fmt.Printf("wrote %d bytes\n", n)
-
-			logrus.Infoln("reading")
-			buf := make([]byte, 1024)
-			_, err = stdout.Read(buf)
-			if err != nil {
-				logrus.WithError(err).Errorln("failed to read from channel")
-			}
+		err = scp.UploadFile(stdin, stdout, "/tmp/test")
+		if err != nil {
+			logrus.WithError(err).Fatalln("failed to transfer file")
 		}
-		logrus.Infoln("waiting")
 	},
 }
 
