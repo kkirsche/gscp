@@ -16,7 +16,7 @@ package cmd
 
 import (
 	"fmt"
-	"io"
+	"io/ioutil"
 	"os"
 
 	"golang.org/x/crypto/ssh"
@@ -41,6 +41,7 @@ to quickly create a Cobra application.`,
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run: func(cmd *cobra.Command, args []string) {
+		logrus.SetLevel(logrus.DebugLevel)
 		agent, err := scp.SSHAgent()
 		if err != nil {
 			logrus.WithError(err).Fatalln("failed to connect to ssh agent")
@@ -64,16 +65,49 @@ to quickly create a Cobra application.`,
 		}
 		defer session.Close()
 
+		stdin, err := session.StdinPipe()
+		if err != nil {
+			logrus.WithError(err).Fatalln("failed to setup stdin for session")
+		}
+
 		stdout, err := session.StdoutPipe()
 		if err != nil {
 			logrus.WithError(err).Fatalln("failed to setup stdout for session")
 		}
-		go io.Copy(os.Stdout, stdout)
 
-		err = session.Run("hostname")
+		s, err := os.Stat("/tmp/test")
 		if err != nil {
-			logrus.WithError(err).Fatalln("failed to execute command")
+			logrus.WithError(err).Fatalln("failed to stat file")
 		}
+
+		f, err := ioutil.ReadFile("/tmp/test")
+		if err != nil {
+			logrus.WithError(err).Fatalln("failed to read in file contents")
+		}
+
+		transferStartMsg := fmt.Sprintf("C%04o %d %s\n", s.Mode(), s.Size(), s.Name())
+
+		go func() {
+			session.Run("scp -t /tmp")
+		}()
+
+		for _, i := range [][]byte{[]byte(transferStartMsg), f, []byte("\x00")} {
+			logrus.Infoln("writing")
+			fmt.Println(string(i))
+			n, err := stdin.Write(i)
+			if err != nil {
+				logrus.WithError(err).Fatalln("failed to transfer file via write")
+			}
+			fmt.Printf("wrote %d bytes\n", n)
+
+			logrus.Infoln("reading")
+			buf := make([]byte, 1024)
+			_, err = stdout.Read(buf)
+			if err != nil {
+				logrus.WithError(err).Errorln("failed to read from channel")
+			}
+		}
+		logrus.Infoln("waiting")
 	},
 }
 
