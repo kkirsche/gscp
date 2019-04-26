@@ -25,7 +25,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var cfgFile string
+var (
+	preserve bool
+	cfgFile  string
+)
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -75,7 +78,14 @@ to quickly create a Cobra application.`,
 		}
 
 		go func() {
-			session.Run("scp -t /tmp")
+			cmd := "scp"
+			cmd = fmt.Sprintf("%s -t", cmd)
+			if preserve {
+				cmd = fmt.Sprintf("%s%s", cmd, "p")
+			}
+			cmd = fmt.Sprintf("%s /tmp", cmd)
+
+			session.Run(cmd)
 		}()
 
 		err = scp.UploadFile(stdin, stdout, "/tmp/test")
@@ -92,4 +102,8 @@ func Execute() {
 		fmt.Println(err)
 		os.Exit(1)
 	}
+}
+
+func init() {
+	rootCmd.PersistentFlags().BoolVarP(&preserve, "preserve", "p", false, "preserve access / modification times")
 }
