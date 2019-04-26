@@ -16,6 +16,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	"golang.org/x/crypto/ssh"
@@ -26,8 +27,9 @@ import (
 )
 
 var (
-	preserve bool
-	verbose  bool
+	preserve  bool
+	verbose   bool
+	recursive bool
 
 	cfgFile string
 )
@@ -88,18 +90,41 @@ to quickly create a Cobra application.`,
 			if preserve {
 				cmd = fmt.Sprintf("%s -p", cmd)
 			}
-			cmd = fmt.Sprintf("%s -t", cmd)
 
+			if recursive {
+				cmd = fmt.Sprintf("%s -r", cmd)
+			}
+
+			cmd = fmt.Sprintf("%s -t", cmd)
 			cmd = fmt.Sprintf("%s /tmp", cmd)
 
 			fmt.Printf("Sending command %s\n", cmd)
 			session.Run(cmd)
 		}()
 
+		go func() {
+			p := make([]byte, 1)
+			for {
+				_, err := stdout.Read(p)
+				if err == io.EOF {
+					break
+				}
+				fmt.Print(string(p[:]))
+			}
+		}()
+
 		fmt.Printf("Copying %s\n", args[0])
-		err = scp.UploadFile(stdin, stdout, args[0], preserve)
-		if err != nil {
-			logrus.WithError(err).Fatalln("failed to transfer file")
+		if recursive {
+			err = scp.UploadDirectory(stdin, args[0], preserve)
+			if err != nil {
+				logrus.WithError(err).Fatalln("failed to transfer directory")
+			}
+
+		} else {
+			err = scp.UploadFile(stdin, args[0], preserve)
+			if err != nil {
+				logrus.WithError(err).Fatalln("failed to transfer file")
+			}
 		}
 	},
 }
@@ -116,4 +141,5 @@ func Execute() {
 func init() {
 	rootCmd.PersistentFlags().BoolVarP(&preserve, "preserve", "p", false, "preserve access / modification times")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "enable verbose logging")
+	rootCmd.PersistentFlags().BoolVarP(&recursive, "recursive", "r", false, "recursively copy a directory")
 }
